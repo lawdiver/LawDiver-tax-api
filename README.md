@@ -1,6 +1,6 @@
 # LawDiver Tax API
 
-**Federal tax research over REST** — Internal Revenue Code by year, Treasury regulations, IRS guidance, forms, treaties, tax caselaw search, and IRS cite check.
+**Federal tax research over REST** — Internal Revenue Code by year, Treasury regulations, IRS guidance, forms, treaties, and a unified tax caselaw call (search, retrieve, good-law, citing cases, IRS context).
 
 | | |
 |---|---|
@@ -10,7 +10,7 @@
 | **Base URL** | `https://lawdiver.com/api/v1/tax` |
 | **Keys** | `ld_tax_…` from [Account → API Keys](https://lawdiver.com/account?tab=api-keys) |
 | **Signup** | [https://lawdiver.com/signup](https://lawdiver.com/signup) |
-| **MCP** | `https://lawdiver.com/mcp/tax` (same eight jobs; tool catalog at `/mcp/tax/toolspec.json`) |
+| **MCP** | `https://lawdiver.com/mcp/tax` (same seven jobs; tool catalog at `/mcp/tax/toolspec.json`) |
 
 The **web product is free for now**. An API key needs a regular LawDiver account. Tax keys are separate from caselaw `ld_live_` keys — they only open `/api/v1/tax/*` (and Tax MCP). Caselaw cite-check still resolves tax authorities with your regular key; deep tax search / law / guidance stays on this surface.
 
@@ -33,43 +33,41 @@ All methods are `POST` with a JSON body. Responses use the LawDiver `/api/v1` en
 
 ## What each endpoint does
 
-Eight calls. **Search** to discover. **Law / guidance / form / treaty / case-context** to retrieve. **Check** to verify IRS cites. **What's new** to monitor recent additions.
+Seven calls. **Search** for Code / regs / IRS. **`/case`** for all tax caselaw work. **Law / guidance / form / treaty** to retrieve. **Check** to verify IRS cites.
 
-### `POST /api/v1/tax/search` — find authorities
+### `POST /api/v1/tax/search` — find Code, regs, IRS materials
 
-Discovery search. Pass a research question or a citation. Results are grouped by level of authority: Internal Revenue Code → Treasury regulations → cases → revenue rulings & procedures → treaties → other (notices, PLRs, forms, …).
+Discovery for non-case primary sources. Hits are grouped: Internal Revenue Code → Treasury regulations → revenue rulings & procedures → treaties → other. **Default sources omit caselaw** — use `/case` for opinions. You may still pass `"caselaw"` in `sources` for a mixed card.
 
 | Field | Notes |
 |------|--------|
 | `query` | Required |
-| `sources` | Optional: `irc`, `treas_reg`, `caselaw`, `guidance`, `rev_rul`, `rev_proc`, `written_determinations`, `forms_pubs`, `treaties`, `irm`. Default omits `irm`. |
+| `sources` | Optional: `irc`, `treas_reg`, `caselaw`, `guidance`, `rev_rul`, `rev_proc`, `written_determinations`, `forms_pubs`, `treaties`, `irm` |
 | `authorityTypes` | Narrow IRS / WD / IRM rows (e.g. `notice`, `plr`, `td`) |
-| `courtIds` | Caselaw `court_registry` ids (`scotus`, `ca9`, `tax`, `uscfc`, …) |
 | `codeSection` | IRC section the guidance interprets |
 | `dateFrom` / `dateTo` | `YYYY-MM-DD` |
-| `asOf` | Year filter for law / guidance that existed then |
-| `perGroup` | Max hits per group (1–25, default 3). Prefer this over `limit`. |
+| `asOf` | Year filter |
+| `perGroup` | Max hits per group (1–25, default 3). Prefer over `limit`. |
 | `limit` | Legacy alias for `perGroup` |
 
 ```json
 {
   "query": "qualified business income",
-  "sources": ["irc", "treas_reg", "caselaw", "rev_rul", "rev_proc"],
+  "sources": ["irc", "treas_reg", "rev_rul", "rev_proc"],
   "codeSection": "199A",
-  "perGroup": 3,
-  "courtIds": ["scotus", "ca9", "tax", "uscfc"]
+  "perGroup": 3
 }
 ```
 
 ### `POST /api/v1/tax/law` — read the Code or a regulation as of a year
 
-Point-in-time statute reader for one IRC or Treas. Reg. section. Editions are held year by year from 1985. `compareTo` returns a word-level redline. Also returns edition history and citing IRS authorities for that section.
+Point-in-time statute reader. Editions held year by year from 1985. `compareTo` returns a word-level redline.
 
 | Field | Notes |
 |------|--------|
 | `kind` | Required: `irc` or `treas_reg` |
-| `cite` | Required, e.g. `"163"`, `"163(j)"`, `"1.163(j)-1"` |
-| `asOf` | Edition year (at-or-before) |
+| `cite` | Required, e.g. `"163"`, `"1.163(j)-1"` |
+| `asOf` | Edition year |
 | `compareTo` | Second year for redline |
 | `includeText` | Boolean |
 
@@ -85,11 +83,11 @@ Point-in-time statute reader for one IRC or Treas. Reg. section. Editions are he
 
 ### `POST /api/v1/tax/guidance` — retrieve one IRS document
 
-Open a named IRS authority (Rev. Rul., Rev. Proc., notice, PLR, CCA, T.D., IRM, …). Returns Bluebook cite, Bulletin cite, IRS status, Code sections interpreted, optional text and cited-by. Letter rulings carry the IRC § 6110(k)(3) non-precedent notice.
+Open a named IRS authority (Rev. Rul., Rev. Proc., notice, PLR, CCA, T.D., IRM, …) with status and optional text / cited-by.
 
 | Field | Notes |
 |------|--------|
-| `cite` | Required, e.g. `"Rev. Rul. 99-7"` |
+| `cite` | Required |
 | `includeText` | Default true |
 | `includeCitedBy` | Boolean |
 
@@ -103,7 +101,7 @@ Open a named IRS authority (Rev. Rul., Rev. Proc., notice, PLR, CCA, T.D., IRM, 
 
 ### `POST /api/v1/tax/check` — verify IRS guidance cites
 
-Batch citator for **IRS guidance only** (up to 50 cites). Not for IRC or Treas. Reg. sections — use `/law` for those. Reports existence, IRS adverse status from Bulletin effect sections / finding lists, separate judicial notes, and whether interpreted Code sections changed after issuance. `"No adverse action found"` is not a guarantee.
+Batch citator for **IRS guidance only** (up to 50 cites). Not for IRC or Treas. Reg. sections — use `/law` for those.
 
 | Field | Notes |
 |------|--------|
@@ -115,31 +113,56 @@ Batch citator for **IRS guidance only** (up to 50 cites). Not for IRC or Treas. 
 }
 ```
 
-### `POST /api/v1/tax/case-context` — IRS context for an opinion
+### `POST /api/v1/tax/case` — tax caselaw (search + retrieve + good-law + citing cases + IRS)
 
-Given an opinion id, return IRS authorities linked to that opinion and (if `caseName` is set) likely IRS AOD / acquiescence hits. Does **not** return full opinion text — use the [caselaw API](https://lawdiver.com/products/api) or Tax MCP `get_tax_case` for the opinion body.
+**One endpoint for all tax caselaw work.**
+
+| `mode` | Behavior |
+|--------|----------|
+| `auto` (default) | Resolve a unique cite / `caseId` → retrieve with good-law, citing cases, IRS context. Otherwise search. |
+| `search` | Ranked hit list only |
+| `retrieve` | One case; ambiguous cites return candidates |
 
 | Field | Notes |
 |------|--------|
-| `opinionId` | Required positive integer (LawDiver or corpus opinion id) |
-| `caseName` | Optional; improves AOD matching |
+| `query` | Citation, case name, or search words |
+| `caseId` / `opinionId` | Open a known case |
+| `courtIds` | Search filter (`scotus`, `ca9`, `tax`, `uscfc`, …) |
+| `dateFrom` / `dateTo` | Search date filter |
+| `limit` | Search hit cap (default 10) |
+| `includeGoodLaw` | Default true on retrieve |
+| `includeCitedBy` | Cases that cite this one (default true) |
+| `includeIrsContext` | IRS authorities + AOD hits (default true) |
+| `citedByLimit` | Default 25 |
 
 ```json
 {
-  "opinionId": 12345678,
-  "caseName": "Smith v. Commissioner"
+  "query": "T.C. Memo. 2019-14",
+  "mode": "auto",
+  "includeGoodLaw": true,
+  "includeCitedBy": true,
+  "includeIrsContext": true
+}
+```
+
+Search example:
+
+```json
+{
+  "query": "like-kind exchange related party",
+  "mode": "search",
+  "courtIds": ["tax", "scotus", "ca9"],
+  "limit": 10
 }
 ```
 
 ### `POST /api/v1/tax/treaty` — U.S. tax treaty articles
 
-Find tax treaty instruments with a partner country and return matching articles by number or topic. `asOf` keeps instruments that applied on that date. Technical Explanations are not loaded yet.
-
 | Field | Notes |
 |------|--------|
 | `country` | Required |
-| `article` | Optional article number |
-| `topic` | Optional: `dividends`, `interest`, `royalties`, `pe`, `lob`, `pensions`, `residence`, `capital_gains`, `business_profits` |
+| `article` | Optional |
+| `topic` | `dividends`, `interest`, `royalties`, `pe`, `lob`, `pensions`, `residence`, `capital_gains`, `business_profits` |
 | `asOf` | `YYYY-MM-DD` |
 
 ```json
@@ -152,11 +175,9 @@ Find tax treaty instruments with a partner country and return matching articles 
 
 ### `POST /api/v1/tax/form` — form, instructions, or publication
 
-Look up an IRS form / instructions / publication by number. Lists held revisions; `taxYear` picks a year (else latest). Returns PDF URL, optional text, and a short change summary vs the prior revision when available. Roughly the last ten tax years; still filling.
-
 | Field | Notes |
 |------|--------|
-| `number` | Required, e.g. `"1065"`, `"Pub 535"` |
+| `number` | Required |
 | `part` | `form` \| `instructions` \| `publication` |
 | `taxYear` | Optional |
 | `includeText` | Boolean |
@@ -170,26 +191,6 @@ Look up an IRS form / instructions / publication by number. Lists held revisions
 }
 ```
 
-### `POST /api/v1/tax/whats-new` — recent guidance and form changes
-
-Change feed since a date: new guidance rows and form revisions (with a one-line change summary when held). For monitoring, not deep historical research.
-
-| Field | Notes |
-|------|--------|
-| `since` | Required `YYYY-MM-DD` |
-| `codeSections` | Optional IRC sections (max 20) |
-| `types` | Optional, e.g. `rev_rul`, `notice`, `plr`, `forms_pubs` (max 20) |
-| `limit` | 1–200, default 50 |
-
-```json
-{
-  "since": "2026-01-01",
-  "codeSections": ["163"],
-  "types": ["rev_rul", "notice"],
-  "limit": 50
-}
-```
-
 Field-level marketing page: [lawdiver.com/products/tax-api](https://lawdiver.com/products/tax-api).
 
 ---
@@ -199,13 +200,13 @@ Field-level marketing page: [lawdiver.com/products/tax-api](https://lawdiver.com
 ### curl
 
 ```bash
-curl -s https://lawdiver.com/api/v1/tax/law \
+curl -s https://lawdiver.com/api/v1/tax/case \
   -H "Authorization: Bearer ld_tax_YOUR_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"kind":"irc","cite":"61","asOf":2024,"includeText":true}'
+  -d '{"query":"T.C. Memo. 2019-14","mode":"auto"}'
 ```
 
-Or run `examples/curl.sh` with `LAWDIVER_TAX_API_KEY` set.
+Or run `examples/curl.sh` with `LAWDIVER_TAX_API_KEY` set (`./examples/curl.sh case`).
 
 ### TypeScript
 
@@ -244,10 +245,9 @@ print(r.json())
 | `/api/v1/tax/law` | `get_tax_law` |
 | `/api/v1/tax/guidance` | `get_irs_guidance` |
 | `/api/v1/tax/check` | `check_tax_authority` |
-| `/api/v1/tax/case-context` | (IRS half of `get_tax_case`) |
+| `/api/v1/tax/case` | `get_tax_case` |
 | `/api/v1/tax/treaty` | `get_tax_treaty` |
 | `/api/v1/tax/form` | `get_irs_form` |
-| `/api/v1/tax/whats-new` | `tax_whats_new` |
 
 ---
 
@@ -260,4 +260,4 @@ print(r.json())
 
 ## Keywords
 
-IRS · Internal Revenue Code · IRC API · Treasury regulations · Treas. Reg. · revenue ruling API · Rev. Rul. · Rev. Proc. · tax research API · federal tax database · tax citation check · LawDiver Tax · ld_tax_
+IRS · Internal Revenue Code · IRC API · Treasury regulations · Treas. Reg. · revenue ruling API · Rev. Rul. · Rev. Proc. · tax research API · federal tax database · tax citation check · Tax Court API · LawDiver Tax · ld_tax_
